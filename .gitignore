@@ -1,0 +1,15 @@
+# Secrets
+backend/.env
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.Python
+
+# Docker
+*.log
+
+# VS Code
+.vscode/

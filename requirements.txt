@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+clickhouse-connect
+ollama
+sqlparse
+python-dotenv
+streamlit
+pandas
+requests
