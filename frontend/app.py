@@ -185,20 +185,24 @@ with st.container(border=True):
             target = st.selectbox("DuckDB source", duck_sources, format_func=lambda s: s["name"])
             target_id = target["source_id"] if target else None
 
-    if uploaded is not None and st.button("Upload & register", type="primary"):
-        with st.spinner(f"Loading {uploaded.name}..."):
-            result = upload_file(api_url, uploaded.name, uploaded.getvalue(), target_id)
-        if "error" in result:
-            st.error(f"Upload failed: {result.get('detail', result['error'])}")
-        else:
-            st.success(f"Registered `{result['name']}` ({result['dialect']})")
-            st.session_state["sources"] = fetch_sources(api_url)
-            st.session_state["active_source"] = next(
-                (s for s in st.session_state["sources"] if s["source_id"] == result["source_id"]),
-                st.session_state["sources"][0] if st.session_state["sources"] else None,
-            )
-            st.session_state.pop("schema", None)
-            st.rerun()
+    if uploaded is not None:
+        _, btn_col, _ = st.columns([1, 1, 1])
+        with btn_col:
+            do_upload = st.button("Upload & register", type="primary", use_container_width=True)
+        if do_upload:
+            with st.spinner(f"Loading {uploaded.name}..."):
+                result = upload_file(api_url, uploaded.name, uploaded.getvalue(), target_id)
+            if "error" in result:
+                st.error(f"Upload failed: {result.get('detail', result['error'])}")
+            else:
+                st.success(f"Registered `{result['name']}` ({result['dialect']})")
+                st.session_state["sources"] = fetch_sources(api_url)
+                st.session_state["active_source"] = next(
+                    (s for s in st.session_state["sources"] if s["source_id"] == result["source_id"]),
+                    st.session_state["sources"][0] if st.session_state["sources"] else None,
+                )
+                st.session_state.pop("schema", None)
+                st.rerun()
 
     if active and st.session_state.get("schema"):
         with st.expander("Schema"):
