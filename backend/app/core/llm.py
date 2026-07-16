@@ -1,21 +1,110 @@
 import re
-from groq import Groq
+import threading
+import time
+from groq import (
+    Groq,
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    RateLimitError,
+)
 from app.core.config import settings
 
-_client: Groq | None = None
+
+def _list_keys() -> list[str]:
+    keys = []
+    for k in settings.GROQ_API_KEYS.split(","):
+        k = k.strip()
+        if k and k not in keys:
+            keys.append(k)
+    single = settings.GROQ_API_KEY.strip()
+    if single and single not in keys:
+        keys.append(single)
+    if not keys:
+        raise RuntimeError(
+            "No Groq API key configured. Set GROQ_API_KEYS (comma-separated) or "
+            "GROQ_API_KEY in backend/.env (get keys at https://console.groq.com)."
+        )
+    return keys
 
 
-def _get_client() -> Groq:
-    """Create the Groq client lazily so the app can boot without a key."""
-    global _client
-    if _client is None:
-        if not settings.GROQ_API_KEY:
-            raise RuntimeError(
-                "GROQ_API_KEY is not set. Add it to backend/.env "
-                "(get a key at https://console.groq.com)."
+class _KeyPool:
+    def __init__(self, keys):
+        self._keys = list(keys)
+        self._dead = set()
+        self._i = 0
+        self._lock = threading.Lock()
+
+    def acquire(self):
+        with self._lock:
+            alive = [k for k in self._keys if k not in self._dead]
+            if not alive:
+                raise RuntimeError(
+                    "All configured Groq API keys were rejected (401). "
+                    "Check GROQ_API_KEYS in backend/.env."
+                )
+            key = alive[self._i % len(alive)]
+            self._i += 1
+            return key
+
+    def mark_dead(self, key):
+        with self._lock:
+            self._dead.add(key)
+
+
+_clients: dict[str, Groq] = {}
+_pool: _KeyPool | None = None
+
+
+def _get_pool() -> _KeyPool:
+    global _pool
+    if _pool is None:
+        _pool = _KeyPool(_list_keys())
+    return _pool
+
+
+def _get_client(api_key: str) -> Groq:
+    client = _clients.get(api_key)
+    if client is None:
+        client = Groq(api_key=api_key)
+        _clients[api_key] = client
+    return client
+
+
+def _retry_delay(exc, attempt):
+    match = re.search(r"try again in ([\d.]+)s", str(exc), re.IGNORECASE)
+    if match:
+        return float(match.group(1)) + 0.5
+    return min(2.0 * (2 ** attempt), 60.0)
+
+
+def _chat(prompt: str, max_attempts: int = 8) -> str:
+    """Send a prompt to Groq, rotating API keys on rate limits or transient errors.
+
+    Authentication failures mark a key as dead immediately. The function retries
+    across the remaining keys with backoff so one exhausted org key does not
+    kill the whole request.
+    """
+    last_exc = None
+    for attempt in range(max_attempts):
+        key = _get_pool().acquire()
+        try:
+            client = _get_client(key)
+            response = client.chat.completions.create(
+                model=settings.GROQ_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0,
             )
-        _client = Groq(api_key=settings.GROQ_API_KEY)
-    return _client
+            return response.choices[0].message.content.strip()
+        except AuthenticationError as exc:
+            _get_pool().mark_dead(key)
+            last_exc = exc
+        except (RateLimitError, APIConnectionError, APITimeoutError) as exc:
+            last_exc = exc
+            if attempt == max_attempts - 1:
+                break
+            time.sleep(_retry_delay(exc, attempt))
+    raise last_exc
 
 
 DIALECT_HINTS = {
@@ -99,16 +188,6 @@ Answer the user's question in plain English based on these results.
 Be concise and direct. Do not mention SQL or technical details.
 If the results are empty, say so clearly.
 Answer:"""
-
-
-def _chat(prompt: str) -> str:
-    client = _get_client()
-    response = client.chat.completions.create(
-        model=settings.GROQ_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0,
-    )
-    return response.choices[0].message.content.strip()
 
 
 def generate_sql(schema: str, question: str, dialect: str = "DuckDB") -> str:
