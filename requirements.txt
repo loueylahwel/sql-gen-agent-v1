@@ -5,6 +5,9 @@ clickhouse-connect
 groq>=0.9
 sqlparse
 python-dotenv
+python-multipart
+duckdb
+openpyxl
 streamlit
 pandas
 requests

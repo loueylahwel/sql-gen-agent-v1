@@ -3,6 +3,7 @@ from typing import Any
 
 class QueryRequest(BaseModel):
     question: str
+    source_id: str | None = None  # default: clickhouse if available, else the only source
 
 class QueryResponse(BaseModel):
     question: str
@@ -11,8 +12,19 @@ class QueryResponse(BaseModel):
     rows: list[list[Any]]
     row_count: int
     answer: str
+    source_id: str = ""
+    source_name: str = ""
 
 class SchemaResponse(BaseModel):
     database: str
     tables: list[str]
     ddl: str
+
+class SourceInfo(BaseModel):
+    source_id: str
+    name: str
+    dialect: str
+    tables: list[str]
+
+class SourceUploadResponse(SourceInfo):
+    schema_preview: str

@@ -9,6 +9,7 @@ services:
       - ./backend/.env
     volumes:
       - ./backend:/app
+      - ./backend/uploads:/app/uploads  # keep uploaded files across restarts
 
   frontend:
     build: ./frontend

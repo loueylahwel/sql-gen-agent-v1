@@ -18,14 +18,31 @@ def _get_client() -> Groq:
     return _client
 
 
-def build_sql_prompt(schema: str, question: str) -> str:
-    return f"""You are an expert ClickHouse SQL assistant.
-Given the following ClickHouse database schema, write a SQL query that answers the user's question.
+DIALECT_HINTS = {
+    "ClickHouse": "Use ClickHouse syntax (toDate(), toDateTime(), uniq(), countIf(), etc.)",
+    "DuckDB": (
+        "Use DuckDB / standard SQL syntax. The tables listed in the schema already exist "
+        "as views — query them directly, do NOT use read_csv_auto or file paths."
+    ),
+    "SQLite": (
+        "Use SQLite syntax: LIKE instead of ILIKE, date()/strftime() for date handling, "
+        "no ClickHouse-specific functions."
+    ),
+}
+
+
+def _dialect_hint(dialect: str) -> str:
+    return DIALECT_HINTS.get(dialect, f"Use {dialect} syntax.")
+
+
+def build_sql_prompt(schema: str, question: str, dialect: str = "ClickHouse") -> str:
+    return f"""You are an expert {dialect} SQL assistant.
+Given the following {dialect} database schema, write a SQL query that answers the user's question.
 
 Rules:
 - Output ONLY the raw SQL query, no explanation, no markdown, no backticks
 - Use only SELECT statements. Never use INSERT, UPDATE, DELETE, DROP, ALTER, CREATE
-- Use ClickHouse syntax (toDate(), toDateTime(), uniq(), countIf(), etc.)
+- {_dialect_hint(dialect)}
 - Add LIMIT {settings.ROW_LIMIT} unless the query returns a single aggregated row
 
 Schema:
@@ -36,14 +53,14 @@ Question: {question}
 SQL:"""
 
 
-def build_fix_prompt(schema: str, question: str, bad_sql: str, error: str) -> str:
-    return f"""You are an expert ClickHouse SQL assistant.
+def build_fix_prompt(schema: str, question: str, bad_sql: str, error: str, dialect: str = "ClickHouse") -> str:
+    return f"""You are an expert {dialect} SQL assistant.
 A SQL query generated for the user's question failed. Fix it.
 
 Rules:
 - Output ONLY the corrected raw SQL query, no explanation, no markdown, no backticks
 - Use only SELECT statements. Never use INSERT, UPDATE, DELETE, DROP, ALTER, CREATE
-- Use ClickHouse syntax (toDate(), toDateTime(), uniq(), countIf(), etc.)
+- {_dialect_hint(dialect)}
 - Add LIMIT {settings.ROW_LIMIT} unless the query returns a single aggregated row
 
 Schema:
@@ -95,12 +112,12 @@ def _chat(prompt: str) -> str:
     return response.choices[0].message.content.strip()
 
 
-def generate_sql(schema: str, question: str) -> str:
-    return _extract_sql(_chat(build_sql_prompt(schema, question)))
+def generate_sql(schema: str, question: str, dialect: str = "ClickHouse") -> str:
+    return _extract_sql(_chat(build_sql_prompt(schema, question, dialect)))
 
 
-def fix_sql(schema: str, question: str, bad_sql: str, error: str) -> str:
-    return _extract_sql(_chat(build_fix_prompt(schema, question, bad_sql, error)))
+def fix_sql(schema: str, question: str, bad_sql: str, error: str, dialect: str = "ClickHouse") -> str:
+    return _extract_sql(_chat(build_fix_prompt(schema, question, bad_sql, error, dialect)))
 
 
 def generate_answer(question: str, columns: list, rows: list) -> str:

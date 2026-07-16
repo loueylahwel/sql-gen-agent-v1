@@ -1,7 +1,16 @@
-import clickhouse_connect
 from app.core.config import settings
 
+try:
+    import clickhouse_connect
+except ImportError:  # app must boot without it; only the ClickHouse source needs it
+    clickhouse_connect = None
+
 def get_client():
+    if clickhouse_connect is None:
+        raise RuntimeError(
+            "clickhouse-connect is not installed. "
+            "Install it with 'pip install clickhouse-connect' to use the ClickHouse source."
+        )
     return clickhouse_connect.get_client(
         host=settings.CLICKHOUSE_HOST,
         user=settings.CLICKHOUSE_USER,
