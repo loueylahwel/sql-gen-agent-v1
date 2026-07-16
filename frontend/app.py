@@ -146,14 +146,6 @@ api_url = os.environ.get("BACKEND_URL", "http://localhost:8002")
 with st.container(border=True):
     _step_header(1, "Data source")
 
-api_url = os.environ.get("BACKEND_URL", "http://localhost:8002")
-
-# ---------------------------------------------------------------------------
-# Control strip
-# ---------------------------------------------------------------------------
-with st.container(border=True):
-    _step_header(1, "Data source")
-
     if st.button("Refresh sources", help="Reload the list of registered sources"):
         st.session_state["sources"] = fetch_sources(api_url)
 
@@ -161,6 +153,11 @@ with st.container(border=True):
 
     r1_c1, r1_c2 = st.columns([2, 2], vertical_alignment="bottom")
     with r1_c1:
+        uploaded = st.file_uploader("Upload file", type=UPLOAD_TYPES,
+                                    help="CSV, TSV, JSON, Parquet, Excel, or a SQLite .db")
+        st.caption("200MB per file • " + ", ".join(t.upper() for t in UPLOAD_TYPES))
+
+    with r1_c2:
         if sources:
             labels = [f"{s['name']} · {DIALECT_LABELS.get(s['dialect'], s['dialect'])}" for s in sources]
             index_map = {s["source_id"]: i for i, s in enumerate(sources)}
@@ -172,10 +169,6 @@ with st.container(border=True):
         else:
             st.markdown('<p class="muted">No sources yet. Upload a file below.</p>', unsafe_allow_html=True)
             st.session_state["active_source"] = None
-
-    with r1_c2:
-        uploaded = st.file_uploader("Upload file", type=UPLOAD_TYPES,
-                                    help="CSV, TSV, JSON, Parquet, Excel, or a SQLite .db")
 
     active = st.session_state.get("active_source")
     duck_sources = [s for s in sources if s["dialect"] == "DuckDB"]
