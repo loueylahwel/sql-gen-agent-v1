@@ -1,4 +1,4 @@
-"""Data source abstraction: ClickHouse (env), DuckDB (uploaded files), SQLite (uploaded .db).
+"""Data source abstraction: DuckDB (uploaded files) and SQLite (uploaded .db).
 
 Every source exposes the same interface so the query pipeline stays source-agnostic:
 schema discovery (columns + sample rows), table listing, query execution, health check.
@@ -10,9 +10,6 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from app.core.config import settings
-from app.db.connection import get_client
-
 UPLOADS_DIR = Path(__file__).resolve().parents[2] / "uploads"
 
 SAMPLE_ROWS = 2               # sample rows per table shown to the LLM
@@ -23,7 +20,7 @@ MAX_COLUMNS_FOR_SAMPLE = 50   # skip sampling entirely for very wide tables
 @runtime_checkable
 class DataSource(Protocol):
     name: str
-    dialect: str  # "ClickHouse", "DuckDB", "SQLite"
+    dialect: str  # "DuckDB", "SQLite"
 
     def get_schema(self) -> str: ...
     def list_tables(self) -> list[str]: ...
@@ -77,98 +74,6 @@ def _format_table_schema(table: str, columns: list, sample_rows: list) -> str:
         for row in sample_rows:
             lines.append("  (" + ", ".join(_format_value(v) for v in row) + ")")
     return "\n".join(lines)
-
-
-# ── ClickHouse (configured via backend/.env) ─────────────────────────────────
-
-class ClickHouseSource:
-    dialect = "ClickHouse"
-
-    def __init__(self):
-        self.name = f"ClickHouse ({settings.CLICKHOUSE_DATABASE})"
-
-    def test_connection(self) -> bool:
-        try:
-            get_client().query("SELECT 1")
-            return True
-        except Exception:
-            return False
-
-    def run_query(self, sql: str) -> tuple[list[str], list[tuple]]:
-        client = get_client()
-        result = client.query(sql)
-        return list(result.column_names), [list(row) for row in result.result_set]
-
-    def list_tables(self) -> list[str]:
-        client = get_client()
-        rows = client.query(
-            "SELECT name FROM system.tables WHERE database = {db:String} AND engine NOT LIKE '%View%'",
-            parameters={"db": settings.CLICKHOUSE_DATABASE},
-        ).result_set
-        return [r[0] for r in rows]
-
-    def get_schema(self) -> str:
-        client = get_client()
-        db = settings.CLICKHOUSE_DATABASE
-
-        tables = client.query(
-            "SELECT name FROM system.tables WHERE database = {db:String} AND engine NOT LIKE '%View%'",
-            parameters={"db": db},
-        ).result_set
-
-        if not tables:
-            return "-- No tables found in database."
-
-        schema_parts = []
-        for (table_name,) in tables:
-            columns = client.query(
-                "SELECT name, type, comment FROM system.columns WHERE database = {db:String} AND table = {table:String} ORDER BY position",
-                parameters={"db": db, "table": table_name},
-            ).result_set
-
-            engine_rows = client.query(
-                "SELECT engine, partition_key, sorting_key FROM system.tables WHERE database = {db:String} AND name = {table:String}",
-                parameters={"db": db, "table": table_name},
-            ).result_set
-
-            col_defs = []
-            for col_name, col_type, comment in columns:
-                line = f"    `{col_name}` {col_type}"
-                if comment:
-                    line += f"  -- {comment}"
-                col_defs.append(line)
-
-            create_stmt = f"CREATE TABLE {db}.{table_name} (\n" + ",\n".join(col_defs) + "\n)"
-
-            if engine_rows:
-                engine, partition_key, sorting_key = engine_rows[0]
-                create_stmt += f"\nENGINE = {engine}"
-                if partition_key:
-                    create_stmt += f"\nPARTITION BY {partition_key}"
-                if sorting_key:
-                    create_stmt += f"\nORDER BY {sorting_key}"
-
-            create_stmt += ";"
-            create_stmt += self._sample_rows_clause(client, db, table_name, columns)
-            schema_parts.append(create_stmt)
-
-        return "\n\n".join(schema_parts)
-
-    def _sample_rows_clause(self, client, db: str, table: str, columns: list) -> str:
-        sample_cols = _columns_to_sample([(c[0], c[1]) for c in columns])
-        if not sample_cols:
-            return ""
-        col_list = ", ".join(f"`{c}`" for c in sample_cols)
-        try:
-            rows = client.query(f"SELECT {col_list} FROM `{db}`.`{table}` LIMIT {SAMPLE_ROWS}").result_set
-        except Exception:
-            return ""  # sampling is best-effort; never break schema discovery
-        if not rows:
-            return ""
-        lines = ["-- Sample rows:"]
-        for row in rows:
-            lines.append("--   (" + ", ".join(_format_value(v) for v in row) + ")")
-        return "\n" + "\n".join(lines)
 
 
 # ── DuckDB (uploaded CSV / Excel / JSON / Parquet files) ─────────────────────

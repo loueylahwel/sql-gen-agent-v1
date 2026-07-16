@@ -3,7 +3,7 @@ from typing import Any
 
 class QueryRequest(BaseModel):
     question: str
-    source_id: str | None = None  # default: clickhouse if available, else the only source
+    source_id: str | None = None  # default: the only registered source
 
 class QueryResponse(BaseModel):
     question: str

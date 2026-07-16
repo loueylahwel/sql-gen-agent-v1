@@ -56,7 +56,7 @@ def upload_file(base_url: str, file_name: str, file_bytes: bytes, source_id: str
 
 def check_health(base_url: str) -> dict:
     try:
-        resp = requests.get(f"{base_url}/api/health/db", timeout=10)
-        return resp.json() if resp.ok else {"clickhouse": "error"}
+        resp = requests.get(f"{base_url}/health", timeout=10)
+        return resp.json() if resp.ok else {"status": "error"}
     except Exception:
-        return {"clickhouse": "unreachable"}
+        return {"status": "unreachable"}

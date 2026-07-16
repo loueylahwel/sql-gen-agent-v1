@@ -31,7 +31,6 @@ def _source_info(source_id: str, source) -> SourceInfo:
 
 @router.get("/sources", response_model=list[SourceInfo])
 def list_sources():
-    registry.ensure_clickhouse()  # surface the env ClickHouse source if reachable
     return [_source_info(sid, src) for sid, src in registry.list_sources()]
 
 

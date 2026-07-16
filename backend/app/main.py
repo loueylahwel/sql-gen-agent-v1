@@ -7,7 +7,7 @@ UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(
     title="Text-to-SQL Agent v2",
-    description="Natural language to SQL over ClickHouse, uploaded files (DuckDB) and SQLite, using Groq",
+    description="Natural language to SQL over uploaded files (DuckDB) and SQLite, using Groq",
     version="2.0.0",
 )
 

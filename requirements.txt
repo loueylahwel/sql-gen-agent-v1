@@ -1,7 +1,6 @@
 fastapi
 uvicorn[standard]
 pydantic-settings
-clickhouse-connect
 groq>=0.9
 sqlparse
 python-dotenv

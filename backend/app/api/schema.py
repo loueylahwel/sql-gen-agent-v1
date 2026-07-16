@@ -1,6 +1,5 @@
 from fastapi import APIRouter, HTTPException
 from app.db import registry
-from app.db.connection import test_connection
 from app.models.schemas import SchemaResponse
 from app.api import query as query_module
 
@@ -24,10 +23,4 @@ def refresh_schema(source_id: str | None = None):
         query_module._schema_cache.pop(source_id, None)
     else:
         query_module._schema_cache.clear()
-    registry.reset_clickhouse()  # retry lazy registration if ClickHouse was down
     return {"status": "schema cache cleared"}
-
-@router.get("/health/db")
-def db_health():
-    ok = test_connection()
-    return {"clickhouse": "ok" if ok else "unreachable"}

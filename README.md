@@ -1,12 +1,11 @@
 # Text-to-SQL Agent v2
 
-Ask natural language questions against **any data source** — plug in a database or upload a CSV and interrogate it in plain English. SQL generation runs on the Groq cloud API (llama-3.3-70b-versatile) — no local model server needed.
+Ask natural language questions against **uploaded data** — CSV, TSV, JSON, JSONL, Parquet, Excel, or SQLite — and interrogate it in plain English. SQL generation runs on the Groq cloud API (llama-3.3-70b-versatile) — no local model server needed.
 
 ## Data sources
 
 | Source | How it's configured | Dialect |
 |---|---|---|
-| **ClickHouse** | `CLICKHOUSE_*` env vars in `backend/.env` (optional) | ClickHouse |
 | **File upload** — CSV, TSV, JSON, JSONL, Parquet, XLSX, XLS | Upload via UI or `POST /api/sources/upload`; loaded into an embedded DuckDB session | DuckDB |
 | **SQLite database** — .db, .sqlite, .sqlite3 | Upload via UI or `POST /api/sources/upload` | SQLite |
 
@@ -30,9 +29,7 @@ text2sql/
 │   │   │   ├── llm.py         # Groq client + per-dialect prompt builders
 │   │   │   └── validator.py   # SQL safety check (all sources)
 │   │   ├── db/
-│   │   │   ├── connection.py  # ClickHouse client (lazy import guard)
-│   │   │   ├── introspect.py  # compat wrapper → ClickHouseSource
-│   │   │   ├── sources.py     # DataSource abstraction + ClickHouse/DuckDB/SQLite impls
+│   │   │   ├── sources.py     # DataSource abstraction + DuckDB/SQLite impls
 │   │   │   └── registry.py    # in-memory source registry + default resolution
 │   │   └── models/
 │   │       └── schemas.py     # Pydantic models
@@ -63,10 +60,9 @@ cp backend/.env.example backend/.env
 
 # 2. Edit backend/.env:
 #    - GROQ_API_KEY   (get one at https://console.groq.com) — required for querying
-#    - CLICKHOUSE_*   (OPTIONAL — only for the built-in ClickHouse source)
 ```
 
-The app boots fine without ClickHouse and without a Groq key — you get clear error messages at query time instead.
+The app boots fine without a Groq key — you get a clear error message at query time instead.
 
 ---
 
@@ -105,7 +101,7 @@ streamlit run app.py
 ## Using it
 
 1. **Upload a file** in the sidebar (CSV, Excel, JSON, Parquet, SQLite .db) — it's registered as a source and becomes active immediately. The discovered schema (with sample rows) is shown in a preview.
-2. **Pick the active source** from the source list (env-configured ClickHouse appears automatically when reachable).
+2. **Pick the active source** from the source list.
 3. **Ask questions** in the chat. The caption under each answer shows which source answered.
 4. Optional: check **"Add to an existing DuckDB source"** before uploading to join multiple files in one source.
 
@@ -117,11 +113,6 @@ streamlit run app.py
 |----------------------|--------------------------|---------------------------------------------------|
 | `GROQ_API_KEY`       | — (required for queries) | From https://console.groq.com                     |
 | `GROQ_MODEL`         | `llama-3.3-70b-versatile`| Any model available on Groq                       |
-| `CLICKHOUSE_HOST`    | — (optional)             | Built-in ClickHouse source; omit to run uploads-only |
-| `CLICKHOUSE_USER`    | `default`                |                                                   |
-| `CLICKHOUSE_PASSWORD`| — (optional)             |                                                   |
-| `CLICKHOUSE_SECURE`  | `true`                   | `false` for plain local ClickHouse                |
-| `CLICKHOUSE_DATABASE`| `default`                |                                                   |
 | `ROW_LIMIT`          | `500`                    | LIMIT added to generated queries                  |
 
 ---
@@ -136,10 +127,10 @@ streamlit run app.py
 | GET    | `/api/sources`            | List registered sources + dialects + tables        |
 | POST   | `/api/sources/upload`     | Upload a file (multipart `file`, optional `source_id` to add to an existing DuckDB source) |
 | DELETE | `/api/sources/{source_id}`| Unregister a source and delete its files           |
-| GET    | `/api/health/db`          | Check ClickHouse connection                        |
+| GET    | `/health`                 | Health check                                       |
 | GET    | `/docs`                   | Swagger UI                                         |
 
-`source_id` resolution (when omitted on `/api/query` and `/api/schema`): the env ClickHouse source if reachable → otherwise the only registered source → otherwise `400 no data source configured`.
+`source_id` resolution (when omitted on `/api/query` and `/api/schema`): the only registered source → otherwise `400 no data source configured`.
 
 Upload rules: max 100 MB per file (`413`), extensions dispatched by type — `.csv/.tsv/.json/.jsonl/.parquet/.xlsx/.xls` → DuckDB, `.db/.sqlite/.sqlite3` → SQLite, anything else → `415`.
 

@@ -19,14 +19,13 @@ def _get_client() -> Groq:
 
 
 DIALECT_HINTS = {
-    "ClickHouse": "Use ClickHouse syntax (toDate(), toDateTime(), uniq(), countIf(), etc.)",
     "DuckDB": (
         "Use DuckDB / standard SQL syntax. The tables listed in the schema already exist "
         "as views — query them directly, do NOT use read_csv_auto or file paths."
     ),
     "SQLite": (
         "Use SQLite syntax: LIKE instead of ILIKE, date()/strftime() for date handling, "
-        "no ClickHouse-specific functions."
+        "use standard SQLite functions."
     ),
 }
 
@@ -35,7 +34,7 @@ def _dialect_hint(dialect: str) -> str:
     return DIALECT_HINTS.get(dialect, f"Use {dialect} syntax.")
 
 
-def build_sql_prompt(schema: str, question: str, dialect: str = "ClickHouse") -> str:
+def build_sql_prompt(schema: str, question: str, dialect: str = "DuckDB") -> str:
     return f"""You are an expert {dialect} SQL assistant.
 Given the following {dialect} database schema, write a SQL query that answers the user's question.
 
@@ -53,7 +52,7 @@ Question: {question}
 SQL:"""
 
 
-def build_fix_prompt(schema: str, question: str, bad_sql: str, error: str, dialect: str = "ClickHouse") -> str:
+def build_fix_prompt(schema: str, question: str, bad_sql: str, error: str, dialect: str = "DuckDB") -> str:
     return f"""You are an expert {dialect} SQL assistant.
 A SQL query generated for the user's question failed. Fix it.
 
@@ -112,11 +111,11 @@ def _chat(prompt: str) -> str:
     return response.choices[0].message.content.strip()
 
 
-def generate_sql(schema: str, question: str, dialect: str = "ClickHouse") -> str:
+def generate_sql(schema: str, question: str, dialect: str = "DuckDB") -> str:
     return _extract_sql(_chat(build_sql_prompt(schema, question, dialect)))
 
 
-def fix_sql(schema: str, question: str, bad_sql: str, error: str, dialect: str = "ClickHouse") -> str:
+def fix_sql(schema: str, question: str, bad_sql: str, error: str, dialect: str = "DuckDB") -> str:
     return _extract_sql(_chat(build_fix_prompt(schema, question, bad_sql, error, dialect)))
 
 
