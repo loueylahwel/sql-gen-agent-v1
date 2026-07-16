@@ -2,7 +2,7 @@ fastapi
 uvicorn[standard]
 pydantic-settings
 clickhouse-connect
-ollama
+groq>=0.9
 sqlparse
 python-dotenv
 streamlit

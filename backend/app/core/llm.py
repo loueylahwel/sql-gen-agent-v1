@@ -1,10 +1,21 @@
 import re
-import ollama
+from groq import Groq
 from app.core.config import settings
 
+_client: Groq | None = None
 
-def _get_client():
-    return ollama.Client(host=settings.OLLAMA_HOST)
+
+def _get_client() -> Groq:
+    """Create the Groq client lazily so the app can boot without a key."""
+    global _client
+    if _client is None:
+        if not settings.GROQ_API_KEY:
+            raise RuntimeError(
+                "GROQ_API_KEY is not set. Add it to backend/.env "
+                "(get a key at https://console.groq.com)."
+            )
+        _client = Groq(api_key=settings.GROQ_API_KEY)
+    return _client
 
 
 def build_sql_prompt(schema: str, question: str) -> str:
@@ -23,6 +34,30 @@ Schema:
 Question: {question}
 
 SQL:"""
+
+
+def build_fix_prompt(schema: str, question: str, bad_sql: str, error: str) -> str:
+    return f"""You are an expert ClickHouse SQL assistant.
+A SQL query generated for the user's question failed. Fix it.
+
+Rules:
+- Output ONLY the corrected raw SQL query, no explanation, no markdown, no backticks
+- Use only SELECT statements. Never use INSERT, UPDATE, DELETE, DROP, ALTER, CREATE
+- Use ClickHouse syntax (toDate(), toDateTime(), uniq(), countIf(), etc.)
+- Add LIMIT {settings.ROW_LIMIT} unless the query returns a single aggregated row
+
+Schema:
+{schema}
+
+Question: {question}
+
+Failed SQL:
+{bad_sql}
+
+Error:
+{error}
+
+Corrected SQL:"""
 
 
 def build_answer_prompt(question: str, columns: list, rows: list) -> str:
@@ -50,27 +85,34 @@ If the results are empty, say so clearly.
 Answer:"""
 
 
-def generate_sql(schema: str, question: str) -> str:
-    prompt = build_sql_prompt(schema, question)
+def _chat(prompt: str) -> str:
     client = _get_client()
-    response = client.chat(
-        model=settings.OLLAMA_MODEL,
+    response = client.chat.completions.create(
+        model=settings.GROQ_MODEL,
         messages=[{"role": "user", "content": prompt}],
+        temperature=0,
     )
-    raw = response["message"]["content"].strip()
-    return _extract_sql(raw)
+    return response.choices[0].message.content.strip()
+
+
+def generate_sql(schema: str, question: str) -> str:
+    return _extract_sql(_chat(build_sql_prompt(schema, question)))
+
+
+def fix_sql(schema: str, question: str, bad_sql: str, error: str) -> str:
+    return _extract_sql(_chat(build_fix_prompt(schema, question, bad_sql, error)))
 
 
 def generate_answer(question: str, columns: list, rows: list) -> str:
-    prompt = build_answer_prompt(question, columns, rows)
-    client = _get_client()
-    response = client.chat(
-        model=settings.OLLAMA_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return response["message"]["content"].strip()
+    return _chat(build_answer_prompt(question, columns, rows))
 
 
 def _extract_sql(raw: str) -> str:
+    # strip markdown fences
     raw = re.sub(r"```(?:sql)?", "", raw, flags=re.IGNORECASE)
-    return raw.strip("` \n").strip()
+    raw = raw.strip("` \n")
+    # if the model added prose around the SQL, start at the first SELECT/WITH
+    match = re.search(r"\b(SELECT|WITH)\b", raw, re.IGNORECASE)
+    if match:
+        raw = raw[match.start():]
+    return raw.strip()

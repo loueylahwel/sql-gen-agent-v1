@@ -1,32 +1,12 @@
 services:
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    environment:
-      - OLLAMA_MAX_LOADED_MODELS=1
-      - OLLAMA_NUM_PARALLEL=1
-
   backend:
     build: ./backend
     container_name: text2sql-backend
     ports:
       - "8000:8000"
-    environment:
-      CLICKHOUSE_HOST: j208km7gg3.germanywestcentral.azure.clickhouse.cloud
-      CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: erynQOtW_Hnr8
-      CLICKHOUSE_SECURE: "true"
-      CLICKHOUSE_DATABASE: default
-      OLLAMA_HOST: http://ollama:11434
-      OLLAMA_MODEL: llama3.2:3b
-      ROW_LIMIT: "500"
-    depends_on:
-      - ollama
+    env_file:
+      - ./backend/.env
     volumes:
       - ./backend:/app
 
@@ -35,10 +15,9 @@ services:
     container_name: text2sql-frontend
     ports:
       - "8501:8501"
+    environment:
+      BACKEND_URL: http://backend:8000
     depends_on:
       - backend
     volumes:
       - ./frontend:/app
-
-volumes:
-  ollama_data:

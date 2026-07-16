@@ -4,7 +4,7 @@ from app.api import query, schema
 
 app = FastAPI(
     title="Text-to-SQL API",
-    description="Natural language to ClickHouse SQL using Ollama",
+    description="Natural language to ClickHouse SQL using Groq",
     version="1.0.0",
 )
 

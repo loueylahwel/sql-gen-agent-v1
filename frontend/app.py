@@ -1,16 +1,17 @@
+import os
 import streamlit as st
 import pandas as pd
 import requests
 from utils.api import query_api, fetch_schema, check_health
 from utils.charts import render_chart
 
-st.set_page_config(page_title="Text-to-SQL", page_icon="🦙", layout="wide")
+st.set_page_config(page_title="Text-to-SQL", page_icon="⚡", layout="wide")
 st.title("Text-to-SQL")
-st.caption("Ask questions in plain English. Powered by Ollama running locally.")
+st.caption("Ask questions in plain English. Powered by Groq (llama-3.3-70b-versatile).")
 
 with st.sidebar:
     st.header("Settings")
-    api_url = st.text_input("Backend URL", value="http://backend:8000")
+    api_url = st.text_input("Backend URL", value=os.environ.get("BACKEND_URL", "http://localhost:8000"))
 
     if st.button("Check connection"):
         health = check_health(api_url)
